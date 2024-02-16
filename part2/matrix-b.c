@@ -417,11 +417,11 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     {
         if(flag==0){
             vm=vm1;
-            flag=1;
+            //flag=1;
         }
         else{
             vm=vm2;
-            flag=0;
+            //flag=0;
         }
         
             //kvm_reset_vcpu(vm->vcpus);
@@ -444,6 +444,7 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
             printf("VMFD: %d KVM_EXIT_IO\n", vm->vm_fd);
             printf("VMFD: %d out port: %d, data: %d\n", vm->vm_fd, vm->vcpus->kvm_run->io.port, *(int *)((char *)(vm->vcpus->kvm_run) + vm->vcpus->kvm_run->io.data_offset));
             sleep(1);
+            flag=~flag;
             break;
         case KVM_EXIT_MMIO:
             printf("VMFD: %d KVM_EXIT_MMIO\n", vm->vm_fd);
@@ -460,6 +461,7 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
                 //perror("sigtemedwait");
                 reset_timer();
             }
+            flag=~flag;
             //reset_timer();
             
             break;
