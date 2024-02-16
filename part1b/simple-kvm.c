@@ -152,11 +152,16 @@ void vcpu_init(struct vm *vm, struct vcpu *vcpu)
 		exit(1);
 	}
 }
-
+uint32_t gva_guest;
 int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 {
 	struct kvm_regs regs;
 	uint64_t memval = 0;
+	long long exits=0;		//changes
+	long long io_in_exit=0;
+	long long io_out_exit=0;
+	
+	int flag=0;
 
 	for (;;) {
 		if (ioctl(vcpu->vcpu_fd, KVM_RUN, 0) < 0) {
@@ -166,20 +171,114 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 
 		switch (vcpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HLT:
+			exits++;
 			goto check;
 
 		case KVM_EXIT_IO:
+			exits++;
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT
 			    && vcpu->kvm_run->io.port == 0xE9) {
+				io_out_exit++;
 				char *p = (char *)vcpu->kvm_run;
 				fwrite(p + vcpu->kvm_run->io.data_offset,
 				       vcpu->kvm_run->io.size, 1, stdout);
 				fflush(stdout);
 				continue;
 			}
+			//Changes
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT
+			    && vcpu->kvm_run->io.port == 0xE8){
+					io_out_exit++;
+					uint32_t *val_ptr = (uint32_t *)((uintptr_t)vcpu->kvm_run + vcpu->kvm_run->io.data_offset);
+					printf("%u\n", *val_ptr);
+					fflush(stdout);
+					continue;
+				}
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
+                vcpu->kvm_run->io.port == 0xEA)
+            {
+				io_in_exit++;
+                uint32_t num_exits = exits; // Get the value of num_exits
+                memcpy((char *)vcpu->kvm_run + vcpu->kvm_run->io.data_offset,
+                       &num_exits, sizeof(uint32_t));
+                continue;
+            }
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT &&
+                vcpu->kvm_run->io.port == 0xE7)
+            {
+				io_out_exit++;
+				intptr_t *ptr = (intptr_t *)((intptr_t)vcpu->kvm_run +
+                                     vcpu->kvm_run->io.data_offset);
+          		printf("%s", &vm->mem[*ptr]);
+				fflush(stdout);
+				continue;
+            }
+			
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
+                vcpu->kvm_run->io.port == 0xE6)
+            {
+				io_in_exit++;
+				int string_length = snprintf(NULL, 0, "IO in: %lld\nIO out: %lld\n", io_in_exit, io_out_exit) + 1;
+				char *result_string = (char *)malloc(string_length * sizeof(char));
+				snprintf(result_string, string_length, "IO in: %lld\nIO out: %lld\n", io_in_exit, io_out_exit);
+				uintptr_t *ptr = (uintptr_t *)((uintptr_t)vcpu->kvm_run + vcpu->kvm_run->io.data_offset);
+				if(flag==0){
+					memcpy(&vm->mem[*ptr+50000], result_string, strlen(result_string) + 1);
+					flag=1;
+					*ptr=*ptr+50000;
+				}
+				else{
+					memcpy(&vm->mem[*ptr], result_string, strlen(result_string) + 1);
+				}
+				//printf("Value here %s",&vm->mem[*ptr]);
+				//memcpy((char *)vcpu->kvm_run + vcpu->kvm_run->io.data_offset,
+                       //result_string, sizeof(result_string));
+				//ptr=result_string;
+				continue;
+            }
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT &&
+                vcpu->kvm_run->io.port == 0xE5){
+					io_out_exit++;
+					uint32_t *val_ptr = (uint32_t *)((uintptr_t)vcpu->kvm_run + vcpu->kvm_run->io.data_offset);
+					gva_guest=*val_ptr;
+					continue;
+				}
+			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
+                vcpu->kvm_run->io.port == 0xE4){
+					io_in_exit++;
+					uint32_t *val_ptr = (uint32_t *)((uintptr_t)vcpu->kvm_run + vcpu->kvm_run->io.data_offset);
+					//gva_guest=*val_ptr;
+					struct kvm_translation kvm_trans;
+					kvm_trans.linear_address=(__u64)gva_guest;
+					kvm_trans.valid=0;
+					//printf("Valid before:%d\n",kvm_trans.valid);
+					//printf("Address before: %d\n",kvm_trans.physical_address);
+					if (ioctl(vcpu->vcpu_fd, KVM_TRANSLATE, &kvm_trans) < 0) {
+						perror("KVM_TRANSLATE");
+						exit(1);
+					}
+					//printf("Valid:%lld\n",kvm_trans.valid);
+					if(!kvm_trans.valid){
+						printf("Invalid GVA\n");
+						*val_ptr=0;
+					}else{
+						//printf("Address: %d\n",kvm_trans.physical_address);
+						//*val_ptr=kvm_trans.physical_address;
+						*val_ptr=kvm_trans.physical_address;
+						
+					}
+					
+					continue;
+				}
+			
 
+			
+
+			//changes end
 			/* fall through */
+	
 		default:
+			exits++;
 			fprintf(stderr,	"Got exit_reason %d,"
 				" expected KVM_EXIT_HLT (%d)\n",
 				vcpu->kvm_run->exit_reason, KVM_EXIT_HLT);
