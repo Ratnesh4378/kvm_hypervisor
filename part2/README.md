@@ -6,6 +6,8 @@ matrix is a example program to demonstrate running of two VM using KVM API. Test
 
 ````bash
 make
+./matrix-a
+./matrix-b
 ./matrix
 ````
 
