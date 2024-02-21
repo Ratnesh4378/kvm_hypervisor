@@ -213,7 +213,7 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 				io_out_exit++;
 				intptr_t *ptr = (intptr_t *)((intptr_t)vcpu->kvm_run +
                                      vcpu->kvm_run->io.data_offset);
-          		printf("%s", &vm->mem[*ptr]);
+          		printf("%s", (vm->mem+*ptr));
 				fflush(stdout);
 				continue;
             }
@@ -338,6 +338,7 @@ int run_real_mode(struct vm *vm, struct vcpu *vcpu)
 	/* Clear all FLAGS bits, except bit 1 which is always set. */
 	regs.rflags = 2;
 	regs.rip = 0;
+	regs.rsp = 2 << 20;
 
 	if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0) {
 		perror("KVM_SET_REGS");
@@ -397,6 +398,7 @@ int run_protected_mode(struct vm *vm, struct vcpu *vcpu)
 	/* Clear all FLAGS bits, except bit 1 which is always set. */
 	regs.rflags = 2;
 	regs.rip = 0;
+	regs.rsp = 2 << 20;
 
 	if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0) {
 		perror("KVM_SET_REGS");
@@ -447,6 +449,7 @@ int run_paged_32bit_mode(struct vm *vm, struct vcpu *vcpu)
 	/* Clear all FLAGS bits, except bit 1 which is always set. */
 	regs.rflags = 2;
 	regs.rip = 0;
+	regs.rsp = 2 << 20;
 
 	if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0) {
 		perror("KVM_SET_REGS");
