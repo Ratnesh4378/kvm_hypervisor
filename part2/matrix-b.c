@@ -16,13 +16,11 @@
 #define KVM_DEVICE "/dev/kvm"
 #define RAM_SIZE 512000000
 #define CODE_START 0x1000
-#define BINARY_FILE1 "guest1.bin"
-#define BINARY_FILE2 "guest2.bin"
+#define BINARY_FILE1 "guest1-b.bin"
+#define BINARY_FILE2 "guest2-b.bin"
 #define CURRENT_TIME ((double)clock() / CLOCKS_PER_SEC)
-// #define QUANTUM 1
-// #define FRAC_A 7
-// #define FRAC_B 3
- timer_t gTimerid;
+
+ timer_t Timerid;
 
 struct vm
 {
@@ -267,71 +265,34 @@ exit_kvm:
     return 0;
 }
 
-
+//The function to start the timer
 void start_timer(void)
 {
     struct itimerspec value;
-
     value.it_value.tv_sec = 1;
     value.it_value.tv_nsec = 0;
-
     value.it_interval.tv_sec = 1;
     value.it_interval.tv_nsec = 0;
-
-    timer_create (CLOCK_REALTIME, NULL, &gTimerid);
-
-    timer_settime (gTimerid, 0, &value, NULL);
+    timer_create (CLOCK_REALTIME, NULL, &Timerid);
+    timer_settime (Timerid, 0, &value, NULL);
 }
 
 
 
-int flag=0;
-/*
-int times=0;
+int flag=0;     //The flag to determine , which VM to run.
+
+//Funtion to reset the timer , each time we receive the interrupt
 void reset_timer()
 {
-    times++;
-    times=times%10;
-    if(times<FRAC_A){
-        flag=0;
-    }
-    else{
-        flag=1;
-    }
-    struct itimerspec value;
-    //printf("I received a interrupt %d flag:%d\n",sig,flag);
-    value.it_value.tv_sec = QUANTUM;
-    value.it_value.tv_nsec = 0;
-
-    value.it_interval.tv_sec = QUANTUM;
-    value.it_interval.tv_nsec = 0;
-    //timer_create (CLOCK_REALTIME, NULL, &gTimerid);
-
-    timer_settime (gTimerid, 0, &value, NULL);
-   
-}
-
-*/
-
-void reset_timer()
-{
-    // if(flag==0){
-    //     flag=1;
-    // }
-    // else{
-    //     flag=0;
-    // }
+    flag=~flag;
     struct itimerspec value;
     //printf("I received a interrupt %d flag:%d\n",sig,flag);
     value.it_value.tv_sec = 1;
     value.it_value.tv_nsec = 0;
-
     value.it_interval.tv_sec = 1;
     value.it_interval.tv_nsec = 0;
     //timer_create (CLOCK_REALTIME, NULL, &gTimerid);
-
-    timer_settime (gTimerid, 0, &value, NULL);
-   
+    timer_settime (Timerid, 0, &value, NULL);  
 }
 
 
@@ -357,6 +318,9 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     */
     // Remove everything in the function above this line and replace it with your code here
     //struct vm *vm = (struct vm *)data;
+
+
+    /*-------Most of the code used in this function is copied from kvm_cpu_thread function, described above-----*/
     int ret = 0;
     kvm_reset_vcpu(vm1->vcpus);
     kvm_reset_vcpu(vm2->vcpus);
@@ -371,34 +335,32 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
 	sigset_t *sigset = (sigset_t *) &sigmask->sigset;
     sigmask->len = 8;
 	sigemptyset(sigset);
-	sigdelset(sigset, SIGALRM);
-    //sigemptyset(&signal_mask);
-    //sigaddset(&signal_mask, SIGALRM);  // Example: Block SIGUSR1
-  
-    //memcpy((sigset_t)sigmask.sigset,signal_mask,sizeof(signal_mask));
-    //sigmask.sigset=signal_mask;
-    //sigmask.sigset[0] = (1 << (SIGALRM- 1));
-    //sigmask.len=sizeof(sigmask.sigset);
+	sigdelset(sigset, SIGALRM);     //No need the delete as sigset is already empty , doing it just for the name sake.
 
+    //ioctl call to unblock signal from vm1
     if (ioctl(vm1->vcpus->vcpu_fd, KVM_SET_SIGNAL_MASK, sigmask) < 0) {
         perror("KVM_SET_SIGNAL_MASK VM1");
         exit(1);
     }
+
+    //ioctl call to unblock signal from vm2
     if (ioctl(vm2->vcpus->vcpu_fd, KVM_SET_SIGNAL_MASK, sigmask) < 0) {
         perror("KVM_SET_SIGNAL_MASK VM2");
         exit(1);
     }
+
+    //Now blocking signal from control thread
     sigaddset(sigset,SIGALRM);
     sigprocmask(SIG_BLOCK, sigset, NULL);
 
  
-    // struct kvm_vcpu_events events;
-    // memset(&events, 0, sizeof(events));
-    // struct sigaction action;
-    // memset(&action, 0, sizeof(action));
+     //struct kvm_vcpu_events events;
+     //memset(&events, 0, sizeof(events));
+     //struct sigaction action;
+     //memset(&action, 0, sizeof(action));
     // action.sa_sigaction = handle_exception;
-    // action.sa_flags = SA_SIGINFO;
-    // sigaction(SIGALRM, &action, NULL); 
+     //action.sa_flags = SA_SIGINFO;
+     //sigaction(SIGALRM, &action, NULL); 
 
     // action.sa_sigaction = handle_interrupt;
     // sigaction(SIGALRM, &action, NULL);
@@ -408,23 +370,17 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
 
     //(void) signal(SIGALRM, reset_timer);
 
+    //start the timer now
     start_timer();
-
     
-
-
     while (1)
     {
         if(flag==0){
             vm=vm1;
-            //flag=1;
         }
         else{
             vm=vm2;
-            //flag=0;
         }
-        
-            //kvm_reset_vcpu(vm->vcpus);
         
         printf("VMFD: %d started running\n", vm->vm_fd);
         ret = ioctl(vm->vcpus->vcpu_fd, KVM_RUN, 0);
@@ -444,7 +400,6 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
             printf("VMFD: %d KVM_EXIT_IO\n", vm->vm_fd);
             printf("VMFD: %d out port: %d, data: %d\n", vm->vm_fd, vm->vcpus->kvm_run->io.port, *(int *)((char *)(vm->vcpus->kvm_run) + vm->vcpus->kvm_run->io.data_offset));
             sleep(1);
-            flag=~flag;
             break;
         case KVM_EXIT_MMIO:
             printf("VMFD: %d KVM_EXIT_MMIO\n", vm->vm_fd);
@@ -455,15 +410,8 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
             tspec.tv_sec=0;
             tspec.tv_nsec=0;
             siginfo_t *info;
-            int sig_val=sigtimedwait(sigset,info,&tspec);
-           
-            if(sig_val!=-1){
-                //perror("sigtemedwait");
-                reset_timer();
-            }
-            flag=~flag;
-            //reset_timer();
-            
+            int sig_val=sigtimedwait(sigset,info,&tspec);  //Catch the signal over here , and handle it. 
+            reset_timer();                                  //Reset the timer and flag value, each time.
             break;
         case KVM_EXIT_SHUTDOWN:
             printf("VMFD: %d KVM_EXIT_SHUTDOWN\n", vm->vm_fd);
@@ -484,7 +432,7 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     }
 
 exit_kvm:
-    sigprocmask(SIG_UNBLOCK, sigset, NULL);
+    sigprocmask(SIG_UNBLOCK, sigset, NULL);         //Unblock the signal from the control thread. 
     return ;
 
 }

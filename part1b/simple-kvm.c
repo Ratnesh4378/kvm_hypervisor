@@ -152,16 +152,16 @@ void vcpu_init(struct vm *vm, struct vcpu *vcpu)
 		exit(1);
 	}
 }
-uint32_t gva_guest;
+uint32_t gva_guest;			//The variable to store gva of guest received from the guest side ( which needs to be translated.)
 int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 {
 	struct kvm_regs regs;
 	uint64_t memval = 0;
-	long long exits=0;		//changes
-	long long io_in_exit=0;
-	long long io_out_exit=0;
+	long long exits=0;		// Initializing the number of exits
+	long long io_in_exit=0;	//initializing the number of IO in requests
+	long long io_out_exit=0;	//Initializing the number of IO out requests
 	
-	int flag=0;
+	int flag=0;					//This flag is to send different addressses to print different exits by type string. 
 
 	for (;;) {
 		if (ioctl(vcpu->vcpu_fd, KVM_RUN, 0) < 0) {
@@ -171,11 +171,11 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 
 		switch (vcpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HLT:
-			exits++;
+			exits++;			//incrementing the number of exits
 			goto check;
 
 		case KVM_EXIT_IO:
-			exits++;
+			exits++;			//incrementing the number of exits
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT
 			    && vcpu->kvm_run->io.port == 0xE9) {
 				io_out_exit++;
@@ -185,7 +185,7 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 				fflush(stdout);
 				continue;
 			}
-			//Changes
+			//To handle the print_32bit hypercall
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT
 			    && vcpu->kvm_run->io.port == 0xE8){
 					io_out_exit++;
@@ -194,15 +194,19 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 					fflush(stdout);
 					continue;
 				}
+			
+			//To handle the num_exits hypercall 
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
                 vcpu->kvm_run->io.port == 0xEA)
             {
 				io_in_exit++;
                 uint32_t num_exits = exits; // Get the value of num_exits
-                memcpy((char *)vcpu->kvm_run + vcpu->kvm_run->io.data_offset,
-                       &num_exits, sizeof(uint32_t));
+                memcpy((char *)vcpu->kvm_run + vcpu->kvm_run->io.data_offset,&num_exits, sizeof(uint32_t));
+				fflush(stdout);
                 continue;
             }
+
+			//To handle the print_Str hypercall
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT &&
                 vcpu->kvm_run->io.port == 0xE7)
             {
@@ -214,6 +218,7 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 				continue;
             }
 			
+			//To handle the numExitsByType hypercall
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
                 vcpu->kvm_run->io.port == 0xE6)
             {
@@ -236,6 +241,8 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 				//ptr=result_string;
 				continue;
             }
+
+			//To receive the GVA from guest , to convert gva to hva
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_OUT &&
                 vcpu->kvm_run->io.port == 0xE5){
 					io_out_exit++;
@@ -243,6 +250,8 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 					gva_guest=*val_ptr;
 					continue;
 				}
+
+			//To convert the received GVA to HVA and write it to the guest.
 			if (vcpu->kvm_run->io.direction == KVM_EXIT_IO_IN &&
                 vcpu->kvm_run->io.port == 0xE4){
 					io_in_exit++;
@@ -265,15 +274,11 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 						//printf("Address: %d\n",kvm_trans.physical_address);
 						//*val_ptr=kvm_trans.physical_address;
 						*val_ptr=kvm_trans.physical_address;
-						
+						*val_ptr=(uint32_t)(uintptr_t)&vm->mem[*val_ptr];
 					}
 					
 					continue;
 				}
-			
-
-			
-
 			//changes end
 			/* fall through */
 	

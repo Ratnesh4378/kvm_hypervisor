@@ -16,13 +16,9 @@
 #define KVM_DEVICE "/dev/kvm"
 #define RAM_SIZE 512000000
 #define CODE_START 0x1000
-#define BINARY_FILE1 "guest1.bin"
-#define BINARY_FILE2 "guest2.bin"
+#define BINARY_FILE1 "guest1-a.bin"
+#define BINARY_FILE2 "guest2-a.bin"
 #define CURRENT_TIME ((double)clock() / CLOCKS_PER_SEC)
-// #define QUANTUM 1
-// #define FRAC_A 7
-// #define FRAC_B 3
-// timer_t gTimerid;
 
 struct vm
 {
@@ -267,56 +263,8 @@ exit_kvm:
     return 0;
 }
 
-/*
-void start_timer(void)
-{
-    struct itimerspec value;
 
-    value.it_value.tv_sec = QUANTUM;
-    value.it_value.tv_nsec = 0;
-
-    value.it_interval.tv_sec = QUANTUM;
-    value.it_interval.tv_nsec = 0;
-
-    timer_create (CLOCK_REALTIME, NULL, &gTimerid);
-
-    timer_settime (gTimerid, 0, &value, NULL);
-}
-
-*/
-
-int flag=0;
-/*
-int times=0;
-void reset_timer()
-{
-    times++;
-    times=times%10;
-    if(times<FRAC_A){
-        flag=0;
-    }
-    else{
-        flag=1;
-    }
-    struct itimerspec value;
-    //printf("I received a interrupt %d flag:%d\n",sig,flag);
-    value.it_value.tv_sec = QUANTUM;
-    value.it_value.tv_nsec = 0;
-
-    value.it_interval.tv_sec = QUANTUM;
-    value.it_interval.tv_nsec = 0;
-    //timer_create (CLOCK_REALTIME, NULL, &gTimerid);
-
-    timer_settime (gTimerid, 0, &value, NULL);
-   
-}
-
-*/
-
-
-
-
-
+int flag=0; //The flag to determine , which VM should run.
 
 void kvm_run_vm(struct vm *vm1, struct vm *vm2)
 {
@@ -336,81 +284,26 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     */
     // Remove everything in the function above this line and replace it with your code here
     //struct vm *vm = (struct vm *)data;
+
+    /*------ Copied code from kvm_cpu_thread function and pasted it here------*/
     int ret = 0;
     kvm_reset_vcpu(vm1->vcpus);
     kvm_reset_vcpu(vm2->vcpus);
     struct vm *vm ;
-/*
-    size_t sigset_size = ((sizeof(unsigned long) - sizeof(__u8 *)) * 8 + 7) / 8;
-    size_t total_size = sizeof(struct kvm_signal_mask) + sigset_size;
-    
-    void *mask_buffer = aligned_alloc(sizeof(unsigned long), total_size);
-    struct kvm_signal_mask *sigmask= (struct kvm_signal_mask *)mask_buffer;
-
-	sigset_t *sigset = (sigset_t *) &sigmask->sigset;
-    sigmask->len = 8;
-	sigemptyset(sigset);
-	sigdelset(sigset, SIGALRM);
-    //sigemptyset(&signal_mask);
-    //sigaddset(&signal_mask, SIGALRM);  // Example: Block SIGUSR1
-  
-    //memcpy((sigset_t)sigmask.sigset,signal_mask,sizeof(signal_mask));
-    //sigmask.sigset=signal_mask;
-    //sigmask.sigset[0] = (1 << (SIGALRM- 1));
-    //sigmask.len=sizeof(sigmask.sigset);
-
-    if (ioctl(vm1->vcpus->vcpu_fd, KVM_SET_SIGNAL_MASK, sigmask) < 0) {
-        perror("KVM_SET_SIGNAL_MASK VM1");
-        exit(1);
-    }
-    if (ioctl(vm2->vcpus->vcpu_fd, KVM_SET_SIGNAL_MASK, sigmask) < 0) {
-        perror("KVM_SET_SIGNAL_MASK VM2");
-        exit(1);
-    }
-    sigaddset(sigset,SIGALRM);
-    sigprocmask(SIG_BLOCK, sigset, NULL);
-
- 
-    struct kvm_vcpu_events events;
-    memset(&events, 0, sizeof(events));
-    struct sigaction action;
-    memset(&action, 0, sizeof(action));
-    action.sa_sigaction = handle_exception;
-    action.sa_flags = SA_SIGINFO;
-    sigaction(SIGALRM, &action, NULL); 
-
-    action.sa_sigaction = handle_interrupt;
-    sigaction(SIGALRM, &action, NULL);
-
-
-
-
-    (void) signal(SIGALRM, reset_timer);
-    
-
-
-    start_timer();
-
-    */
-
 
     while (1)
     {
-        if(flag==0){
+        if(flag==0){        //if flag=0. run vm1
             vm=vm1;
-            flag=1;
         }
-        else{
+        else{               //if flag=1 , run vm2
             vm=vm2;
-            flag=0;
         }
-        
-            //kvm_reset_vcpu(vm->vcpus);
         
         printf("VMFD: %d started running\n", vm->vm_fd);
         ret = ioctl(vm->vcpus->vcpu_fd, KVM_RUN, 0);
+        flag=~flag;     //Flip the flag value ( 0--> 1 and 1--> 0)
 
-        //printf("Time: %f\n", CURRENT_TIME);
         printf("VMFD: %d stopped running - exit reason: %d\n", vm->vm_fd, vm->vcpus->kvm_run->exit_reason);
 
         switch (vm->vcpus->kvm_run->exit_reason)
@@ -431,18 +324,6 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
             break;
         case KVM_EXIT_INTR:
             printf("VMFD: %d KVM_EXIT_INTR\n", vm->vm_fd);
-            /*struct timespec tspec;
-            tspec.tv_sec=0;
-            tspec.tv_nsec=0;
-            siginfo_t *info;
-            int sig_val=sigtimedwait(sigset,info,&tspec);
-           
-            if(sig_val!=-1){
-                //perror("sigtemedwait");
-                reset_timer();
-            }
-            //reset_timer();
-            */
             break;
         case KVM_EXIT_SHUTDOWN:
             printf("VMFD: %d KVM_EXIT_SHUTDOWN\n", vm->vm_fd);
@@ -463,9 +344,7 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     }
 
 exit_kvm:
-    //sigprocmask(SIG_UNBLOCK, sigset, NULL);
     return ;
-
 }
 
 void kvm_clean_vm(struct vm *vm)

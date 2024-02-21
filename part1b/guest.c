@@ -14,7 +14,7 @@ void HC_print8bit(uint8_t val)
 void HC_print32bit(uint32_t val)
 {
 	// Fill in here
-	asm volatile("outl %0,%1" : /* empty */ : "a"(val), "Nd"(0xE8) : "memory");
+	asm volatile("outl %0,%1" : /* empty */ : "a"(val), "Nd"(0xE8) : "memory");  //send the value to the hypervisor, exactly the way it was done for 8 bits
 	//asm volatile("outl %0, $0xE8" : : "a"(val));  //Changes
 	//val++;		// Remove this
 }
@@ -23,8 +23,7 @@ uint32_t HC_numExits()
 {
 	// Fill in here
 	uint32_t num_exits;
-	asm volatile("inl %1, %0" : "=a"(num_exits) : "Nd"(0xEA) : "memory");
-    //asm volatile("inl %%dx, %0" : "=a"(num_exits) : "d"(0xEA)); // Perform an input operation to read num_exits from port 0xE8
+	asm volatile("inl %1, %0" : "=a"(num_exits) : "Nd"(0xEA) : "memory");  //Receive the num_exits from the hypervisor
     return num_exits;
 	//return 0;	// Remove this
 }
@@ -32,12 +31,8 @@ uint32_t HC_numExits()
 void HC_printStr(char *str)
 {
 	// Fill in here
-	//uintptr_t addr = (uintptr_t)str;
-	 uintptr_t ptr = (uintptr_t)str; 
-	//HC_print32bit((uint32_t)ptr);
-	asm volatile("outl %0,%1" : /* empty */ : "a"((uint32_t)ptr), "Nd"(0xE7) : "memory");
-	//asm volatile("outl %0, $0xE7" : : "a"((uint32_t)ptr)); 
-	//str++;		// Remove this
+	//uintptr_t ptr = (uintptr_t)str;
+	asm volatile("outl %0,%1" : /* empty */ : "a"((uint32_t)(uintptr_t)str), "Nd"(0xE7) : "memory"); //Send the string address to Hypervisor
 }
 
 char *HC_numExitsByType()
@@ -47,36 +42,15 @@ char *HC_numExitsByType()
 	char *str;
 	uint32_t res1;
 	uint32_t res;
-	//HC_print32bit(flag);
 	if(flag==0){
-		asm volatile("inl %1, %0" : "=a"(res1) : "Nd"(0xE6) : "memory");
-		//asm volatile("inl %1, %0" : "=a"(res) : "d"(0xE6), "a"(ptr));
-		//str=res;
+		asm volatile("inl %1, %0" : "=a"(res1) : "Nd"(0xE6) : "memory");    //Receive the string address for first call
 		flag=1;
-		//char* dummy="hjhkjhkjhkjhkhkhui0";
-		//char* check1=res1;
-		// while(check1[i]!='\0'){
-		// 	*(str1+i)=check1[i];
-		// 	i++;
-		// }
-		//HC_print32bit(i);
-		//*(str1+i)='\0';
-		//str1=res1;
-		//str1="7777\n";
-		//*(str1+7)='9';
 		str1=(char*)(uintptr_t)res1;
 		return str1;	// Remove this
 	}
 	else{
-		asm volatile("inl %1, %0" : "=a"(res) : "Nd"(0xE6) : "memory");
-		// char* check=res;
-		// while(check[i]!='\0'){
-		// 		*(str+i)=check[i];
-		// 		i++;
-		// 	}
-		// *(str+i)='\0';
+		asm volatile("inl %1, %0" : "=a"(res) : "Nd"(0xE6) : "memory");		//Receive the string address for the second call
 		str=(char*)(uintptr_t)res;
-		//asm volatile("inl %1, %0" : "=a"(res) : "d"(0xE6), "a"(ptr));
 		return str;	// Remove this
 	}
 }
@@ -85,14 +59,8 @@ uint32_t HC_gvaToHva(uint32_t gva)
 {
 	// Fill in here
 	uint32_t hva;
-	//HC_print32bit(gva);
-	//uintptr_t ptr=(uintptr_t)&gva;
-	asm volatile("outl %0,%1" : /* empty */ : "a"(gva), "Nd"(0xE5) : "memory");
-	asm volatile("inl %1, %0" : "=a"(hva) : "Nd"(0xE4) : "memory");
-	//asm volatile("outl %0,%1" : /* empty */ : "a"(gva), "Nd"(0xE7) : "memory");
-	//asm volatile("outl %0, $0xE5" : : "a"(gva));
-	//asm volatile("inl %1, %0" : "=a"((uint32_t)hva) : "d"(0xE5), "a"((uint32_t)gva));
-	//gva++;		// Remove this
+	asm volatile("outl %0,%1" : /* empty */ : "a"(gva), "Nd"(0xE5) : "memory");   //Sending GVA to the Hypervisor
+	asm volatile("inl %1, %0" : "=a"(hva) : "Nd"(0xE4) : "memory");					//Receive HVA from Hypervisor
 	return hva;	// Remove this
 	//return 0;
 }
